@@ -5,15 +5,15 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
-	wasmd "github.com/CosmWasm/wasmd/app"
-	"github.com/CosmWasm/wasmd/x/wasm/types"
+	"io/ioutil"
+	"strings"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
 	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/libs/rand"
-	"io/ioutil"
-	"strings"
+
+	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 var wasmIdent = []byte("\x00\x61\x73\x6D")
@@ -23,9 +23,9 @@ var wasmIdent = []byte("\x00\x61\x73\x6D")
 // Address is the contract address for this instance. Test should make use of this data and/or use NewIBCContractMockWasmer
 // for using a contract mock in Go.
 func (c *TestChain) SeedNewContractInstance() sdk.AccAddress {
-	pInstResp := c.StoreCode(append(wasmIdent, rand.Bytes(10)...))
+	// No longer likes the randomly created wasm, so we just use a test file now
+	pInstResp := c.StoreCodeFile("./testdata/test.wasm")
 	codeID := pInstResp.CodeID
-
 	anyAddressStr := c.SenderAccount.GetAddress().String()
 	initMsg := []byte(fmt.Sprintf(`{"verifier": %q, "beneficiary": %q}`, anyAddressStr, anyAddressStr))
 	return c.InstantiateContract(codeID, initMsg)
@@ -62,13 +62,13 @@ func (c *TestChain) StoreCode(byteCode []byte) types.MsgStoreCodeResponse {
 	return pInstResp
 }
 
-func (c *TestChain) InstantiateContract(codeID uint64, initMsg []byte) sdk.AccAddress {
+func (c *TestChain) InstantiateContract(codeID uint64, msg []byte) sdk.AccAddress {
 	instantiateMsg := &types.MsgInstantiateContract{
 		Sender: c.SenderAccount.GetAddress().String(),
 		Admin:  c.SenderAccount.GetAddress().String(),
 		CodeID: codeID,
 		Label:  "ibc-test",
-		Msg:    initMsg,
+		Msg:    msg,
 		Funds:  sdk.Coins{TestCoin},
 	}
 
@@ -126,14 +126,4 @@ func (c *TestChain) parseSDKResultData(r *sdk.Result) sdk.TxMsgData {
 	var protoResult sdk.TxMsgData
 	require.NoError(c.t, proto.Unmarshal(r.Data, &protoResult))
 	return protoResult
-}
-
-// ContractInfo is a helper function to returns the ContractInfo for the given contract address
-func (c *TestChain) ContractInfo(contractAddr sdk.AccAddress) *types.ContractInfo {
-	return c.TestSupport().WasmKeeper().GetContractInfo(c.GetContext(), contractAddr)
-}
-
-// TestSupport provides access to package private keepers.
-func (c *TestChain) TestSupport() *wasmd.TestSupport {
-	return wasmd.NewTestSupport(c.t, c.App)
 }

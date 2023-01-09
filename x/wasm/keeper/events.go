@@ -2,11 +2,13 @@ package keeper
 
 import (
 	"fmt"
-	"github.com/CosmWasm/wasmd/x/wasm/types"
+	"strings"
+
 	wasmvmtypes "github.com/CosmWasm/wasmvm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-	"strings"
+
+	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 // newWasmModuleEvent creates with wasm module event for interacting with the given contract. Adds custom attributes
@@ -19,20 +21,6 @@ func newWasmModuleEvent(customAttributes []wasmvmtypes.EventAttribute, contractA
 
 	// each wasm invocation always returns one sdk.Event
 	return sdk.Events{sdk.NewEvent(types.WasmModuleEventType, attrs...)}, nil
-}
-
-// returns true when a wasm module event was emitted for this contract already
-func hasWasmModuleEvent(ctx sdk.Context, contractAddr sdk.AccAddress) bool {
-	for _, e := range ctx.EventManager().Events() {
-		if e.Type == types.WasmModuleEventType {
-			for _, a := range e.Attributes {
-				if string(a.Key) == types.AttributeKeyContractAddr && string(a.Value) == contractAddr.String() {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
 
 const eventTypeMinLength = 2

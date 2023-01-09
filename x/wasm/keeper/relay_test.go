@@ -3,14 +3,17 @@ package keeper
 import (
 	"encoding/json"
 	"errors"
-	"github.com/CosmWasm/wasmd/x/wasm/keeper/wasmtesting"
+	"math"
+	"testing"
+
 	wasmvm "github.com/CosmWasm/wasmvm"
 	wasmvmtypes "github.com/CosmWasm/wasmvm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"math"
-	"testing"
+
+	"github.com/CosmWasm/wasmd/x/wasm/keeper/wasmtesting"
+	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 func TestOnOpenChannel(t *testing.T) {
@@ -92,14 +95,13 @@ func TestOnConnectChannel(t *testing.T) {
 	const myContractGas = 40
 
 	specs := map[string]struct {
-		contractAddr          sdk.AccAddress
-		contractResp          *wasmvmtypes.IBCBasicResponse
-		contractErr           error
-		overwriteMessenger    *wasmtesting.MockMessageHandler
-		expContractGas        sdk.Gas
-		expErr                bool
-		expContractEventAttrs int
-		expNoEvents           bool
+		contractAddr       sdk.AccAddress
+		contractResp       *wasmvmtypes.IBCBasicResponse
+		contractErr        error
+		overwriteMessenger *wasmtesting.MockMessageHandler
+		expContractGas     sdk.Gas
+		expErr             bool
+		expEventTypes      []string
 	}{
 		"consume contract gas": {
 			contractAddr:   example.Contract,
@@ -115,7 +117,6 @@ func TestOnConnectChannel(t *testing.T) {
 			},
 			contractErr: errors.New("test, ignore"),
 			expErr:      true,
-			expNoEvents: true,
 		},
 		"dispatch contract messages on success": {
 			contractAddr:   example.Contract,
@@ -130,7 +131,7 @@ func TestOnConnectChannel(t *testing.T) {
 			contractResp: &wasmvmtypes.IBCBasicResponse{
 				Attributes: []wasmvmtypes.EventAttribute{{Key: "Foo", Value: "Bar"}},
 			},
-			expContractEventAttrs: 1,
+			expEventTypes: []string{types.WasmModuleEventType},
 		},
 		"messenger errors returned, events stored": {
 			contractAddr:   example.Contract,
@@ -139,14 +140,13 @@ func TestOnConnectChannel(t *testing.T) {
 				Messages:   []wasmvmtypes.SubMsg{{ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Bank: &wasmvmtypes.BankMsg{}}}, {ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Custom: json.RawMessage(`{"foo":"bar"}`)}}},
 				Attributes: []wasmvmtypes.EventAttribute{{Key: "Foo", Value: "Bar"}},
 			},
-			overwriteMessenger:    wasmtesting.NewErroringMessageHandler(),
-			expErr:                true,
-			expContractEventAttrs: 1,
+			overwriteMessenger: wasmtesting.NewErroringMessageHandler(),
+			expErr:             true,
+			expEventTypes:      []string{types.WasmModuleEventType},
 		},
 		"unknown contract address": {
 			contractAddr: RandomAccountAddress(t),
 			expErr:       true,
-			expNoEvents:  true,
 		},
 	}
 	for name, spec := range specs {
@@ -177,16 +177,10 @@ func TestOnConnectChannel(t *testing.T) {
 			err := keepers.WasmKeeper.OnConnectChannel(ctx, spec.contractAddr, msg)
 
 			// then
-			events := ctx.EventManager().Events()
 			if spec.expErr {
 				require.Error(t, err)
 				assert.Empty(t, capturedMsgs) // no messages captured on error
-				if spec.expNoEvents {
-					require.Len(t, events, 0)
-				} else {
-					require.Len(t, events, 1)
-					assert.Len(t, events[0].Attributes, 1+spec.expContractEventAttrs)
-				}
+				assert.Equal(t, spec.expEventTypes, stripTypes(ctx.EventManager().Events()))
 				return
 			}
 			require.NoError(t, err)
@@ -198,9 +192,7 @@ func TestOnConnectChannel(t *testing.T) {
 			for i, m := range spec.contractResp.Messages {
 				assert.Equal(t, (*capturedMsgs)[i], m.Msg)
 			}
-			// verify events
-			require.Len(t, events, 1)
-			assert.Len(t, events[0].Attributes, 1+spec.expContractEventAttrs)
+			assert.Equal(t, spec.expEventTypes, stripTypes(ctx.EventManager().Events()))
 		})
 	}
 }
@@ -214,14 +206,13 @@ func TestOnCloseChannel(t *testing.T) {
 	const myContractGas = 40
 
 	specs := map[string]struct {
-		contractAddr          sdk.AccAddress
-		contractResp          *wasmvmtypes.IBCBasicResponse
-		contractErr           error
-		overwriteMessenger    *wasmtesting.MockMessageHandler
-		expContractGas        sdk.Gas
-		expErr                bool
-		expContractEventAttrs int
-		expNoEvents           bool
+		contractAddr       sdk.AccAddress
+		contractResp       *wasmvmtypes.IBCBasicResponse
+		contractErr        error
+		overwriteMessenger *wasmtesting.MockMessageHandler
+		expContractGas     sdk.Gas
+		expErr             bool
+		expEventTypes      []string
 	}{
 		"consume contract gas": {
 			contractAddr:   example.Contract,
@@ -237,7 +228,6 @@ func TestOnCloseChannel(t *testing.T) {
 			},
 			contractErr: errors.New("test, ignore"),
 			expErr:      true,
-			expNoEvents: true,
 		},
 		"dispatch contract messages on success": {
 			contractAddr:   example.Contract,
@@ -252,7 +242,7 @@ func TestOnCloseChannel(t *testing.T) {
 			contractResp: &wasmvmtypes.IBCBasicResponse{
 				Attributes: []wasmvmtypes.EventAttribute{{Key: "Foo", Value: "Bar"}},
 			},
-			expContractEventAttrs: 1,
+			expEventTypes: []string{types.WasmModuleEventType},
 		},
 		"messenger errors returned, events stored": {
 			contractAddr:   example.Contract,
@@ -261,14 +251,13 @@ func TestOnCloseChannel(t *testing.T) {
 				Messages:   []wasmvmtypes.SubMsg{{ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Bank: &wasmvmtypes.BankMsg{}}}, {ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Custom: json.RawMessage(`{"foo":"bar"}`)}}},
 				Attributes: []wasmvmtypes.EventAttribute{{Key: "Foo", Value: "Bar"}},
 			},
-			overwriteMessenger:    wasmtesting.NewErroringMessageHandler(),
-			expErr:                true,
-			expContractEventAttrs: 1,
+			overwriteMessenger: wasmtesting.NewErroringMessageHandler(),
+			expErr:             true,
+			expEventTypes:      []string{types.WasmModuleEventType},
 		},
 		"unknown contract address": {
 			contractAddr: RandomAccountAddress(t),
 			expErr:       true,
-			expNoEvents:  true,
 		},
 	}
 	for name, spec := range specs {
@@ -298,16 +287,10 @@ func TestOnCloseChannel(t *testing.T) {
 			err := keepers.WasmKeeper.OnCloseChannel(ctx, spec.contractAddr, msg)
 
 			// then
-			events := ctx.EventManager().Events()
 			if spec.expErr {
 				require.Error(t, err)
 				assert.Empty(t, capturedMsgs) // no messages captured on error
-				if spec.expNoEvents {
-					require.Len(t, events, 0)
-				} else {
-					require.Len(t, events, 1)
-					assert.Len(t, events[0].Attributes, 1+spec.expContractEventAttrs)
-				}
+				assert.Equal(t, spec.expEventTypes, stripTypes(ctx.EventManager().Events()))
 				return
 			}
 			require.NoError(t, err)
@@ -319,8 +302,7 @@ func TestOnCloseChannel(t *testing.T) {
 			for i, m := range spec.contractResp.Messages {
 				assert.Equal(t, (*capturedMsgs)[i], m.Msg)
 			}
-			require.Len(t, events, 1)
-			assert.Len(t, events[0].Attributes, 1+spec.expContractEventAttrs)
+			assert.Equal(t, spec.expEventTypes, stripTypes(ctx.EventManager().Events()))
 		})
 	}
 }
@@ -342,10 +324,7 @@ func TestOnRecvPacket(t *testing.T) {
 		expContractGas     sdk.Gas
 		expAck             []byte
 		expErr             bool
-		// normally 0 on error, 1 on success, if we return custom events, this may be > 1
-		expContractEvents int
-		// how many custom attributes are on the "wasm" event (not counting _contract_address)
-		expContractEventAttrs int
+		expEventTypes      []string
 	}{
 		"consume contract gas": {
 			contractAddr:   example.Contract,
@@ -353,14 +332,12 @@ func TestOnRecvPacket(t *testing.T) {
 			contractResp: &wasmvmtypes.IBCReceiveResponse{
 				Acknowledgement: []byte("myAck"),
 			},
-			expAck:            []byte("myAck"),
-			expContractEvents: 1,
+			expAck: []byte("myAck"),
 		},
 		"can return empty ack": {
-			contractAddr:      example.Contract,
-			expContractGas:    myContractGas,
-			contractResp:      &wasmvmtypes.IBCReceiveResponse{},
-			expContractEvents: 1,
+			contractAddr:   example.Contract,
+			expContractGas: myContractGas,
+			contractResp:   &wasmvmtypes.IBCReceiveResponse{},
 		},
 		"consume gas on error, ignore events + messages": {
 			contractAddr:   example.Contract,
@@ -380,8 +357,7 @@ func TestOnRecvPacket(t *testing.T) {
 				Acknowledgement: []byte("myAck"),
 				Messages:        []wasmvmtypes.SubMsg{{ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Bank: &wasmvmtypes.BankMsg{}}}, {ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Custom: json.RawMessage(`{"foo":"bar"}`)}}},
 			},
-			expContractEvents: 1,
-			expAck:            []byte("myAck"),
+			expAck: []byte("myAck"),
 		},
 		"emit contract attributes on success": {
 			contractAddr:   example.Contract,
@@ -390,9 +366,8 @@ func TestOnRecvPacket(t *testing.T) {
 				Acknowledgement: []byte("myAck"),
 				Attributes:      []wasmvmtypes.EventAttribute{{Key: "Foo", Value: "Bar"}},
 			},
-			expContractEvents:     1,
-			expContractEventAttrs: 1,
-			expAck:                []byte("myAck"),
+			expEventTypes: []string{types.WasmModuleEventType},
+			expAck:        []byte("myAck"),
 		},
 		"emit contract events on success": {
 			contractAddr:   example.Contract,
@@ -408,9 +383,8 @@ func TestOnRecvPacket(t *testing.T) {
 					}},
 				}},
 			},
-			expContractEvents:     2,
-			expContractEventAttrs: 1,
-			expAck:                []byte("myAck"),
+			expEventTypes: []string{types.WasmModuleEventType, "wasm-custom"},
+			expAck:        []byte("myAck"),
 		},
 		"messenger errors returned, events stored": {
 			contractAddr:   example.Contract,
@@ -420,10 +394,9 @@ func TestOnRecvPacket(t *testing.T) {
 				Messages:        []wasmvmtypes.SubMsg{{ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Bank: &wasmvmtypes.BankMsg{}}}, {ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Custom: json.RawMessage(`{"foo":"bar"}`)}}},
 				Attributes:      []wasmvmtypes.EventAttribute{{Key: "Foo", Value: "Bar"}},
 			},
-			overwriteMessenger:    wasmtesting.NewErroringMessageHandler(),
-			expErr:                true,
-			expContractEvents:     1,
-			expContractEventAttrs: 1,
+			overwriteMessenger: wasmtesting.NewErroringMessageHandler(),
+			expErr:             true,
+			expEventTypes:      []string{types.WasmModuleEventType},
 		},
 		"submessage reply can overwrite ack data": {
 			contractAddr:   example.Contract,
@@ -435,8 +408,8 @@ func TestOnRecvPacket(t *testing.T) {
 			mockReplyFn: func(codeID wasmvm.Checksum, env wasmvmtypes.Env, reply wasmvmtypes.Reply, store wasmvm.KVStore, goapi wasmvm.GoAPI, querier wasmvm.Querier, gasMeter wasmvm.GasMeter, gasLimit uint64, deserCost wasmvmtypes.UFraction) (*wasmvmtypes.Response, uint64, error) {
 				return &wasmvmtypes.Response{Data: []byte("myBetterAck")}, 0, nil
 			},
-			expAck:            []byte("myBetterAck"),
-			expContractEvents: 1,
+			expAck:        []byte("myBetterAck"),
+			expEventTypes: []string{types.EventTypeReply},
 		},
 		"unknown contract address": {
 			contractAddr: RandomAccountAddress(t),
@@ -473,14 +446,10 @@ func TestOnRecvPacket(t *testing.T) {
 			gotAck, err := keepers.WasmKeeper.OnRecvPacket(ctx, spec.contractAddr, msg)
 
 			// then
-			events := ctx.EventManager().Events()
 			if spec.expErr {
 				require.Error(t, err)
 				assert.Empty(t, capturedMsgs) // no messages captured on error
-				require.Len(t, events, spec.expContractEvents)
-				if spec.expContractEvents > 0 {
-					assert.Len(t, events[0].Attributes, 1+spec.expContractEventAttrs)
-				}
+				assert.Equal(t, spec.expEventTypes, stripTypes(ctx.EventManager().Events()))
 				return
 			}
 			require.NoError(t, err)
@@ -494,8 +463,7 @@ func TestOnRecvPacket(t *testing.T) {
 			for i, m := range spec.contractResp.Messages {
 				assert.Equal(t, (*capturedMsgs)[i], m.Msg)
 			}
-			require.Len(t, events, spec.expContractEvents)
-			assert.Len(t, events[0].Attributes, 1+spec.expContractEventAttrs)
+			assert.Equal(t, spec.expEventTypes, stripTypes(ctx.EventManager().Events()))
 		})
 	}
 }
@@ -509,14 +477,13 @@ func TestOnAckPacket(t *testing.T) {
 	const myContractGas = 40
 
 	specs := map[string]struct {
-		contractAddr          sdk.AccAddress
-		contractResp          *wasmvmtypes.IBCBasicResponse
-		contractErr           error
-		overwriteMessenger    *wasmtesting.MockMessageHandler
-		expContractGas        sdk.Gas
-		expErr                bool
-		expContractEventAttrs int
-		expNoEvents           bool
+		contractAddr       sdk.AccAddress
+		contractResp       *wasmvmtypes.IBCBasicResponse
+		contractErr        error
+		overwriteMessenger *wasmtesting.MockMessageHandler
+		expContractGas     sdk.Gas
+		expErr             bool
+		expEventTypes      []string
 	}{
 		"consume contract gas": {
 			contractAddr:   example.Contract,
@@ -532,7 +499,6 @@ func TestOnAckPacket(t *testing.T) {
 			},
 			contractErr: errors.New("test, ignore"),
 			expErr:      true,
-			expNoEvents: true,
 		},
 		"dispatch contract messages on success": {
 			contractAddr:   example.Contract,
@@ -547,7 +513,7 @@ func TestOnAckPacket(t *testing.T) {
 			contractResp: &wasmvmtypes.IBCBasicResponse{
 				Attributes: []wasmvmtypes.EventAttribute{{Key: "Foo", Value: "Bar"}},
 			},
-			expContractEventAttrs: 1,
+			expEventTypes: []string{types.WasmModuleEventType},
 		},
 		"messenger errors returned, events stored": {
 			contractAddr:   example.Contract,
@@ -556,14 +522,13 @@ func TestOnAckPacket(t *testing.T) {
 				Messages:   []wasmvmtypes.SubMsg{{ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Bank: &wasmvmtypes.BankMsg{}}}, {ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Custom: json.RawMessage(`{"foo":"bar"}`)}}},
 				Attributes: []wasmvmtypes.EventAttribute{{Key: "Foo", Value: "Bar"}},
 			},
-			overwriteMessenger:    wasmtesting.NewErroringMessageHandler(),
-			expErr:                true,
-			expContractEventAttrs: 1,
+			overwriteMessenger: wasmtesting.NewErroringMessageHandler(),
+			expErr:             true,
+			expEventTypes:      []string{types.WasmModuleEventType},
 		},
 		"unknown contract address": {
 			contractAddr: RandomAccountAddress(t),
 			expErr:       true,
-			expNoEvents:  true,
 		},
 	}
 	for name, spec := range specs {
@@ -588,16 +553,11 @@ func TestOnAckPacket(t *testing.T) {
 			err := keepers.WasmKeeper.OnAckPacket(ctx, spec.contractAddr, myAck)
 
 			// then
-			events := ctx.EventManager().Events()
+
 			if spec.expErr {
 				require.Error(t, err)
 				assert.Empty(t, capturedMsgs) // no messages captured on error
-				if spec.expNoEvents {
-					require.Len(t, events, 0)
-				} else {
-					require.Len(t, events, 1)
-					assert.Len(t, events[0].Attributes, 1+spec.expContractEventAttrs)
-				}
+				assert.Equal(t, spec.expEventTypes, stripTypes(ctx.EventManager().Events()))
 				return
 			}
 			require.NoError(t, err)
@@ -609,9 +569,7 @@ func TestOnAckPacket(t *testing.T) {
 			for i, m := range spec.contractResp.Messages {
 				assert.Equal(t, (*capturedMsgs)[i], m.Msg)
 			}
-
-			require.Len(t, events, 1)
-			assert.Len(t, events[0].Attributes, 1+spec.expContractEventAttrs)
+			assert.Equal(t, spec.expEventTypes, stripTypes(ctx.EventManager().Events()))
 		})
 	}
 }
@@ -631,16 +589,12 @@ func TestOnTimeoutPacket(t *testing.T) {
 		overwriteMessenger *wasmtesting.MockMessageHandler
 		expContractGas     sdk.Gas
 		expErr             bool
-		// normally 0 on error, 1 on success, if we return custom events, this may be > 1
-		expContractEvents int
-		// how many custom attributes are on the "wasm" event (not counting _contract_address)
-		expContractEventAttrs int
+		expEventTypes      []string
 	}{
 		"consume contract gas": {
-			contractAddr:      example.Contract,
-			expContractGas:    myContractGas,
-			contractResp:      &wasmvmtypes.IBCBasicResponse{},
-			expContractEvents: 1,
+			contractAddr:   example.Contract,
+			expContractGas: myContractGas,
+			contractResp:   &wasmvmtypes.IBCBasicResponse{},
 		},
 		"consume gas on error, ignore events + messages": {
 			contractAddr:   example.Contract,
@@ -658,7 +612,6 @@ func TestOnTimeoutPacket(t *testing.T) {
 			contractResp: &wasmvmtypes.IBCBasicResponse{
 				Messages: []wasmvmtypes.SubMsg{{ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Bank: &wasmvmtypes.BankMsg{}}}, {ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Custom: json.RawMessage(`{"foo":"bar"}`)}}},
 			},
-			expContractEvents: 1,
 		},
 		"emit contract attributes on success": {
 			contractAddr:   example.Contract,
@@ -666,8 +619,7 @@ func TestOnTimeoutPacket(t *testing.T) {
 			contractResp: &wasmvmtypes.IBCBasicResponse{
 				Attributes: []wasmvmtypes.EventAttribute{{Key: "Foo", Value: "Bar"}},
 			},
-			expContractEvents:     1,
-			expContractEventAttrs: 1,
+			expEventTypes: []string{types.WasmModuleEventType},
 		},
 		"emit contract events on success": {
 			contractAddr:   example.Contract,
@@ -682,21 +634,18 @@ func TestOnTimeoutPacket(t *testing.T) {
 					}},
 				}},
 			},
-			expContractEvents:     2,
-			expContractEventAttrs: 1,
+			expEventTypes: []string{types.WasmModuleEventType, "wasm-custom"},
 		},
-		// TODO: I am a bit confued this does return events on error...
-		"messenger errors returned, events stored": {
+		"messenger errors returned, events stored before": {
 			contractAddr:   example.Contract,
 			expContractGas: myContractGas + 10,
 			contractResp: &wasmvmtypes.IBCBasicResponse{
 				Messages:   []wasmvmtypes.SubMsg{{ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Bank: &wasmvmtypes.BankMsg{}}}, {ReplyOn: wasmvmtypes.ReplyNever, Msg: wasmvmtypes.CosmosMsg{Custom: json.RawMessage(`{"foo":"bar"}`)}}},
 				Attributes: []wasmvmtypes.EventAttribute{{Key: "Foo", Value: "Bar"}},
 			},
-			overwriteMessenger:    wasmtesting.NewErroringMessageHandler(),
-			expErr:                true,
-			expContractEvents:     1,
-			expContractEventAttrs: 1,
+			overwriteMessenger: wasmtesting.NewErroringMessageHandler(),
+			expErr:             true,
+			expEventTypes:      []string{types.WasmModuleEventType},
 		},
 		"unknown contract address": {
 			contractAddr: RandomAccountAddress(t),
@@ -725,14 +674,10 @@ func TestOnTimeoutPacket(t *testing.T) {
 			err := keepers.WasmKeeper.OnTimeoutPacket(ctx, spec.contractAddr, msg)
 
 			// then
-			events := ctx.EventManager().Events()
 			if spec.expErr {
 				require.Error(t, err)
 				assert.Empty(t, capturedMsgs) // no messages captured on error
-				require.Len(t, events, spec.expContractEvents)
-				if spec.expContractEvents > 0 {
-					assert.Len(t, events[0].Attributes, 1+spec.expContractEventAttrs)
-				}
+				assert.Equal(t, spec.expEventTypes, stripTypes(ctx.EventManager().Events()))
 				return
 			}
 			require.NoError(t, err)
@@ -744,8 +689,15 @@ func TestOnTimeoutPacket(t *testing.T) {
 			for i, m := range spec.contractResp.Messages {
 				assert.Equal(t, (*capturedMsgs)[i], m.Msg)
 			}
-			require.Len(t, events, spec.expContractEvents)
-			assert.Len(t, events[0].Attributes, 1+spec.expContractEventAttrs)
+			assert.Equal(t, spec.expEventTypes, stripTypes(ctx.EventManager().Events()))
 		})
 	}
+}
+
+func stripTypes(events sdk.Events) []string {
+	var r []string
+	for _, e := range events {
+		r = append(r, e.Type)
+	}
+	return r
 }

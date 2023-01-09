@@ -3,10 +3,11 @@ package keeper
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	wasmvmtypes "github.com/CosmWasm/wasmvm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -95,28 +96,26 @@ func TestDispatchSubMsgSuccessCase(t *testing.T) {
 	assert.Empty(t, sub.Data)
 	require.Len(t, sub.Events, 3)
 
-	transfer := sub.Events[0]
+	coinSpent := sub.Events[0]
+	assert.Equal(t, "coin_spent", coinSpent.Type)
+	assert.Equal(t, wasmvmtypes.EventAttribute{
+		Key:   "spender",
+		Value: contractAddr.String(),
+	}, coinSpent.Attributes[0])
+
+	coinReceived := sub.Events[1]
+	assert.Equal(t, "coin_received", coinReceived.Type)
+	assert.Equal(t, wasmvmtypes.EventAttribute{
+		Key:   "receiver",
+		Value: fred.String(),
+	}, coinReceived.Attributes[0])
+
+	transfer := sub.Events[2]
 	assert.Equal(t, "transfer", transfer.Type)
 	assert.Equal(t, wasmvmtypes.EventAttribute{
 		Key:   "recipient",
 		Value: fred.String(),
 	}, transfer.Attributes[0])
-
-	sender := sub.Events[1]
-	assert.Equal(t, "message", sender.Type)
-	assert.Equal(t, wasmvmtypes.EventAttribute{
-		Key:   "sender",
-		Value: contractAddr.String(),
-	}, sender.Attributes[0])
-
-	// where does this come from?
-	module := sub.Events[2]
-	assert.Equal(t, "message", module.Type)
-	assert.Equal(t, wasmvmtypes.EventAttribute{
-		Key:   "module",
-		Value: "bank",
-	}, module.Attributes[0])
-
 }
 
 func TestDispatchSubMsgErrorHandling(t *testing.T) {
@@ -210,7 +209,7 @@ func TestDispatchSubMsgErrorHandling(t *testing.T) {
 
 	assertReturnedEvents := func(expectedEvents int) assertion {
 		return func(t *testing.T, ctx sdk.Context, contract, emptyAccount string, response wasmvmtypes.SubcallResult) {
-			assert.Len(t, response.Ok.Events, expectedEvents)
+			require.Len(t, response.Ok.Events, expectedEvents)
 		}
 	}
 
@@ -231,14 +230,14 @@ func TestDispatchSubMsgErrorHandling(t *testing.T) {
 	assertGotContractAddr := func(t *testing.T, ctx sdk.Context, contract, emptyAccount string, response wasmvmtypes.SubcallResult) {
 		// should get the events emitted on new contract
 		event := response.Ok.Events[0]
-		assert.Equal(t, event.Type, "wasm")
+		require.Equal(t, event.Type, "instantiate")
 		assert.Equal(t, event.Attributes[0].Key, "_contract_address")
 		eventAddr := event.Attributes[0].Value
 		assert.NotEqual(t, contract, eventAddr)
 
 		// data field is the raw canonical address
 		// QUESTION: why not types.MsgInstantiateContractResponse? difference between calling Router and Service?
-		assert.Len(t, response.Ok.Data, 20)
+		require.Len(t, response.Ok.Data, 20)
 		resAddr := sdk.AccAddress(response.Ok.Data)
 		assert.Equal(t, eventAddr, resAddr.String())
 	}
@@ -262,7 +261,7 @@ func TestDispatchSubMsgErrorHandling(t *testing.T) {
 			submsgID: 5,
 			msg:      validBankSend,
 			// note we charge another 40k for the reply call
-			resultAssertions: []assertion{assertReturnedEvents(3), assertGasUsed(123000, 125000)},
+			resultAssertions: []assertion{assertReturnedEvents(3), assertGasUsed(116000, 130000)},
 		},
 		"not enough tokens": {
 			submsgID:    6,
@@ -282,7 +281,7 @@ func TestDispatchSubMsgErrorHandling(t *testing.T) {
 			msg:      validBankSend,
 			gasLimit: &subGasLimit,
 			// uses same gas as call without limit
-			resultAssertions: []assertion{assertReturnedEvents(3), assertGasUsed(123000, 125000)},
+			resultAssertions: []assertion{assertReturnedEvents(3), assertGasUsed(116000, 130000)},
 		},
 		"not enough tokens with limit": {
 			submsgID:    16,
@@ -300,7 +299,6 @@ func TestDispatchSubMsgErrorHandling(t *testing.T) {
 			// uses all the subGasLimit, plus the 92k or so for the main contract
 			resultAssertions: []assertion{assertGasUsed(subGasLimit+92000, subGasLimit+94000), assertErrorString("out of gas")},
 		},
-
 		"instantiate contract gets address in data and events": {
 			submsgID:         21,
 			msg:              instantiateContract,
@@ -388,7 +386,7 @@ func TestDispatchSubMsgEncodeToNoSdkMsg(t *testing.T) {
 		Bank: nilEncoder,
 	}
 
-	ctx, keepers := CreateTestInput(t, false, ReflectFeatures, WithMessageHandler(NewSDKMessageHandler(nil, customEncoders)))
+	ctx, keepers := CreateTestInput(t, false, ReflectFeatures, WithMessageHandler(NewSDKMessageHandler(nil, nil, customEncoders)))
 	accKeeper, keeper, bankKeeper := keepers.AccountKeeper, keepers.WasmKeeper, keepers.BankKeeper
 
 	deposit := sdk.NewCoins(sdk.NewInt64Coin("denom", 100000))

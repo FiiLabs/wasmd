@@ -2,11 +2,13 @@ package keeper
 
 import (
 	"context"
-	"github.com/CosmWasm/wasmd/x/wasm/types"
+	"testing"
+
 	wasmvmtypes "github.com/CosmWasm/wasmvm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/assert"
-	"testing"
+
+	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 func TestHasWasmModuleEvent(t *testing.T) {
@@ -250,4 +252,18 @@ func TestNewWasmModuleEvent(t *testing.T) {
 			}
 		})
 	}
+}
+
+// returns true when a wasm module event was emitted for this contract already
+func hasWasmModuleEvent(ctx sdk.Context, contractAddr sdk.AccAddress) bool {
+	for _, e := range ctx.EventManager().Events() {
+		if e.Type == types.WasmModuleEventType {
+			for _, a := range e.Attributes {
+				if string(a.Key) == types.AttributeKeyContractAddr && string(a.Value) == contractAddr.String() {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

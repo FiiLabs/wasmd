@@ -8,8 +8,6 @@ import (
 	"path"
 	"testing"
 
-	"github.com/CosmWasm/wasmd/x/wasm/keeper"
-	"github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
@@ -28,6 +26,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/libs/log"
 	tmtypes "github.com/tendermint/tendermint/types"
+
+	"github.com/CosmWasm/wasmd/x/wasm/keeper"
+	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 var wasmIdent = []byte("\x00\x61\x73\x6D")
@@ -534,8 +535,8 @@ func TestGetAllContracts(t *testing.T) {
 		"read from message state": {
 			src: types.GenesisState{
 				GenMsgs: []types.GenesisState_GenMsgs{
-					{Sum: &types.GenesisState_GenMsgs_InstantiateContract{InstantiateContract: &types.MsgInstantiateContract{Label: "first"}}},
-					{Sum: &types.GenesisState_GenMsgs_InstantiateContract{InstantiateContract: &types.MsgInstantiateContract{Label: "second"}}},
+					{Sum: &types.GenesisState_GenMsgs_InstantiateContract{InstantiateContract: &types.MsgInstantiateContract{CodeID: 0, Label: "first"}}},
+					{Sum: &types.GenesisState_GenMsgs_InstantiateContract{InstantiateContract: &types.MsgInstantiateContract{CodeID: 0, Label: "second"}}},
 				},
 			},
 			exp: []contractMeta{
@@ -555,7 +556,7 @@ func TestGetAllContracts(t *testing.T) {
 					{IDKey: types.KeyLastInstanceID, Value: 100},
 				},
 				GenMsgs: []types.GenesisState_GenMsgs{
-					{Sum: &types.GenesisState_GenMsgs_InstantiateContract{InstantiateContract: &types.MsgInstantiateContract{Label: "hundred"}}},
+					{Sum: &types.GenesisState_GenMsgs_InstantiateContract{InstantiateContract: &types.MsgInstantiateContract{CodeID: 0, Label: "hundred"}}},
 				},
 			},
 			exp: []contractMeta{
@@ -637,7 +638,7 @@ func executeCmdWithContext(t *testing.T, homeDir string, cmd *cobra.Command) err
 	require.NoError(t, err)
 	appCodec := keeper.MakeEncodingConfig(t).Marshaler
 	serverCtx := server.NewContext(viper.New(), cfg, logger)
-	clientCtx := client.Context{}.WithJSONMarshaler(appCodec).WithHomeDir(homeDir)
+	clientCtx := client.Context{}.WithJSONCodec(appCodec).WithHomeDir(homeDir)
 
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, client.ClientContextKey, &clientCtx)

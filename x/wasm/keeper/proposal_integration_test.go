@@ -5,17 +5,20 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/CosmWasm/wasmd/x/wasm/keeper/wasmtesting"
-	wasmvm "github.com/CosmWasm/wasmvm"
 	"io/ioutil"
 	"testing"
 
-	"github.com/CosmWasm/wasmd/x/wasm/types"
+	wasmvm "github.com/CosmWasm/wasmvm"
+
+	"github.com/CosmWasm/wasmd/x/wasm/keeper/wasmtesting"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	"github.com/cosmos/cosmos-sdk/x/params/types/proposal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 func TestStoreCodeProposal(t *testing.T) {
@@ -73,8 +76,8 @@ func TestInstantiateProposal(t *testing.T) {
 	)
 
 	var (
-		oneAddress   sdk.AccAddress = bytes.Repeat([]byte{0x1}, sdk.AddrLen)
-		otherAddress sdk.AccAddress = bytes.Repeat([]byte{0x2}, sdk.AddrLen)
+		oneAddress   sdk.AccAddress = bytes.Repeat([]byte{0x1}, 20)
+		otherAddress sdk.AccAddress = bytes.Repeat([]byte{0x2}, 20)
 	)
 	src := types.InstantiateContractProposalFixture(func(p *types.InstantiateContractProposal) {
 		p.CodeID = firstCodeID
@@ -111,8 +114,12 @@ func TestInstantiateProposal(t *testing.T) {
 	}}
 	assert.Equal(t, expHistory, wasmKeeper.GetContractHistory(ctx, contractAddr))
 	// and event
-	require.Len(t, em.Events(), 2, "%#v", em.Events())
-	require.Len(t, em.Events()[1].Attributes, 4)
+	require.Len(t, em.Events(), 3, "%#v", em.Events())
+	require.Equal(t, types.EventTypeInstantiate, em.Events()[0].Type)
+	require.Equal(t, types.WasmModuleEventType, em.Events()[1].Type)
+	require.Equal(t, types.EventTypeGovContractResult, em.Events()[2].Type)
+	require.Len(t, em.Events()[2].Attributes, 1)
+	require.NotEmpty(t, em.Events()[2].Attributes[0])
 }
 
 func TestMigrateProposal(t *testing.T) {
@@ -132,8 +139,8 @@ func TestMigrateProposal(t *testing.T) {
 	require.NoError(t, wasmKeeper.importCode(ctx, 2, codeInfoFixture, wasmCode))
 
 	var (
-		anyAddress   sdk.AccAddress = bytes.Repeat([]byte{0x1}, sdk.AddrLen)
-		otherAddress sdk.AccAddress = bytes.Repeat([]byte{0x2}, sdk.AddrLen)
+		anyAddress   sdk.AccAddress = bytes.Repeat([]byte{0x1}, 20)
+		otherAddress sdk.AccAddress = bytes.Repeat([]byte{0x2}, 20)
 		contractAddr                = BuildContractAddress(1, 1)
 	)
 
@@ -192,12 +199,15 @@ func TestMigrateProposal(t *testing.T) {
 	assert.Equal(t, expHistory, wasmKeeper.GetContractHistory(ctx, contractAddr))
 	// and events emitted
 	require.Len(t, em.Events(), 2)
-	require.Len(t, em.Events()[1].Attributes, 4)
+	assert.Equal(t, types.EventTypeMigrate, em.Events()[0].Type)
+	require.Equal(t, types.EventTypeGovContractResult, em.Events()[1].Type)
+	require.Len(t, em.Events()[1].Attributes, 1)
+	assert.Equal(t, types.AttributeKeyResultDataHex, string(em.Events()[1].Attributes[0].Key))
 }
 
 func TestAdminProposals(t *testing.T) {
 	var (
-		otherAddress sdk.AccAddress = bytes.Repeat([]byte{0x2}, sdk.AddrLen)
+		otherAddress sdk.AccAddress = bytes.Repeat([]byte{0x2}, 20)
 		contractAddr                = BuildContractAddress(1, 1)
 	)
 	wasmCode, err := ioutil.ReadFile("./testdata/hackatom.wasm")
@@ -288,7 +298,7 @@ func TestUpdateParamsProposal(t *testing.T) {
 
 	var (
 		cdc                                   = keepers.WasmKeeper.cdc
-		myAddress              sdk.AccAddress = make([]byte, sdk.AddrLen)
+		myAddress              sdk.AccAddress = make([]byte, 20)
 		oneAddressAccessConfig                = types.AccessTypeOnlyAddress.With(myAddress)
 	)
 
