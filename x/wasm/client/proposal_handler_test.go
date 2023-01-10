@@ -9,12 +9,13 @@ import (
 	"os"
 	"testing"
 
-	"github.com/CosmWasm/wasmd/x/wasm/keeper"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
+
+	"github.com/CosmWasm/wasmd/x/wasm/keeper"
 )
 
 func TestGovRestHandlers(t *testing.T) {
@@ -32,7 +33,7 @@ func TestGovRestHandlers(t *testing.T) {
 	)
 	encodingConfig := keeper.MakeEncodingConfig(t)
 	clientCtx := client.Context{}.
-		WithJSONMarshaler(encodingConfig.Marshaler).
+		WithJSONCodec(encodingConfig.Marshaler).
 		WithTxConfig(encodingConfig.TxConfig).
 		WithLegacyAmino(encodingConfig.Amino).
 		WithInput(os.Stdin).

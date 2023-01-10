@@ -2,8 +2,8 @@ package keeper
 
 import (
 	"encoding/json"
-	"github.com/CosmWasm/wasmd/x/wasm/keeper/wasmtesting"
-	"github.com/CosmWasm/wasmd/x/wasm/types"
+	"testing"
+
 	wasmvm "github.com/CosmWasm/wasmvm"
 	wasmvmtypes "github.com/CosmWasm/wasmvm/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
@@ -11,12 +11,14 @@ import (
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	capabilitytypes "github.com/cosmos/cosmos-sdk/x/capability/types"
-	clienttypes "github.com/cosmos/cosmos-sdk/x/ibc/core/02-client/types"
-	channeltypes "github.com/cosmos/cosmos-sdk/x/ibc/core/04-channel/types"
-	ibcexported "github.com/cosmos/cosmos-sdk/x/ibc/core/exported"
+	clienttypes "github.com/cosmos/ibc-go/v2/modules/core/02-client/types"
+	channeltypes "github.com/cosmos/ibc-go/v2/modules/core/04-channel/types"
+	ibcexported "github.com/cosmos/ibc-go/v2/modules/core/exported"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
+
+	"github.com/CosmWasm/wasmd/x/wasm/keeper/wasmtesting"
+	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 func TestMessageHandlerChainDispatch(t *testing.T) {
@@ -190,11 +192,12 @@ func TestSDKMessageHandlerDispatch(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			gotMsg = make([]sdk.Msg, 0)
 			router := baseapp.NewRouter()
+			msgRouter := baseapp.NewMsgServiceRouter()
 			router.AddRoute(spec.srcRoute)
 
 			// when
 			ctx := sdk.Context{}
-			h := NewSDKMessageHandler(router, MessageEncoders{Custom: spec.srcEncoder})
+			h := NewSDKMessageHandler(router, msgRouter, MessageEncoders{Custom: spec.srcEncoder})
 			gotEvents, gotData, gotErr := h.DispatchMsg(ctx, myContractAddr, "myPort", myContractMessage)
 
 			// then
@@ -316,8 +319,6 @@ func TestBurnCoinMessageHandlerIntegration(t *testing.T) {
 	ctx, keepers := CreateDefaultTestInput(t)
 	k := keepers.WasmKeeper
 
-	before, err := keepers.BankKeeper.TotalSupply(sdk.WrapSDKContext(ctx), &banktypes.QueryTotalSupplyRequest{})
-	require.NoError(t, err)
 	example := InstantiateHackatomExampleContract(t, ctx, keepers) // with deposit of 100 stake
 
 	specs := map[string]struct {
@@ -370,6 +371,9 @@ func TestBurnCoinMessageHandlerIntegration(t *testing.T) {
 				},
 				}, 0, nil
 			}}
+
+			before, err := keepers.BankKeeper.TotalSupply(sdk.WrapSDKContext(ctx), &banktypes.QueryTotalSupplyRequest{})
+			require.NoError(t, err)
 
 			// when
 			_, err = k.execute(ctx, example.Contract, example.CreatorAddr, nil, nil)

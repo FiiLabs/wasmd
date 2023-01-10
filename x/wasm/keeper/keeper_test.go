@@ -4,16 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"github.com/CosmWasm/wasmd/x/wasm/keeper/wasmtesting"
-	wasmvm "github.com/CosmWasm/wasmvm"
-	wasmvmtypes "github.com/CosmWasm/wasmvm/types"
-	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"io/ioutil"
 	"math"
 	"testing"
 	"time"
 
-	"github.com/CosmWasm/wasmd/x/wasm/types"
+	wasmvm "github.com/CosmWasm/wasmvm"
+	wasmvmtypes "github.com/CosmWasm/wasmvm/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+
+	"github.com/CosmWasm/wasmd/x/wasm/keeper/wasmtesting"
+
 	stypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -21,6 +22,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+
+	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 const SupportedFeatures = "staking,stargate"
@@ -58,7 +61,7 @@ func TestCreateStoresInstantiatePermission(t *testing.T) {
 	require.NoError(t, err)
 	var (
 		deposit                = sdk.NewCoins(sdk.NewInt64Coin("denom", 100000))
-		myAddr  sdk.AccAddress = bytes.Repeat([]byte{1}, sdk.AddrLen)
+		myAddr  sdk.AccAddress = bytes.Repeat([]byte{1}, 20)
 	)
 
 	specs := map[string]struct {
@@ -322,8 +325,8 @@ func TestInstantiateWithDeposit(t *testing.T) {
 	require.NoError(t, err)
 
 	var (
-		bob  = bytes.Repeat([]byte{1}, sdk.AddrLen)
-		fred = bytes.Repeat([]byte{2}, sdk.AddrLen)
+		bob  = bytes.Repeat([]byte{1}, 20)
+		fred = bytes.Repeat([]byte{2}, 20)
 
 		deposit = sdk.NewCoins(sdk.NewInt64Coin("denom", 100))
 		initMsg = HackatomExampleInitMsg{Verifier: fred, Beneficiary: bob}
@@ -382,9 +385,9 @@ func TestInstantiateWithPermissions(t *testing.T) {
 
 	var (
 		deposit   = sdk.NewCoins(sdk.NewInt64Coin("denom", 100000))
-		myAddr    = bytes.Repeat([]byte{1}, sdk.AddrLen)
-		otherAddr = bytes.Repeat([]byte{2}, sdk.AddrLen)
-		anyAddr   = bytes.Repeat([]byte{3}, sdk.AddrLen)
+		myAddr    = bytes.Repeat([]byte{1}, 20)
+		otherAddr = bytes.Repeat([]byte{2}, 20)
+		anyAddr   = bytes.Repeat([]byte{3}, 20)
 	)
 
 	initMsg := HackatomExampleInitMsg{
@@ -532,7 +535,7 @@ func TestExecute(t *testing.T) {
 	// make sure gas is properly deducted from ctx
 	gasAfter := ctx.GasMeter().GasConsumed()
 	if types.EnableGasVerification {
-		require.Equal(t, uint64(0x12af1), gasAfter-gasBefore)
+		require.Equal(t, uint64(0x120c9), gasAfter-gasBefore)
 	}
 	// ensure bob now exists and got both payments released
 	bobAcct = accKeeper.GetAccount(ctx, bob)
@@ -543,13 +546,13 @@ func TestExecute(t *testing.T) {
 	// ensure contract has updated balance
 	contractAcct = accKeeper.GetAccount(ctx, addr)
 	require.NotNil(t, contractAcct)
-	assert.Equal(t, sdk.Coins(nil), bankKeeper.GetAllBalances(ctx, contractAcct.GetAddress()))
+	assert.Equal(t, sdk.Coins{}, bankKeeper.GetAllBalances(ctx, contractAcct.GetAddress()))
 
 	// and events emitted
-	require.Len(t, em.Events(), 5)
+	require.Len(t, em.Events(), 9)
 	expEvt := sdk.NewEvent("execute",
 		sdk.NewAttribute("_contract_address", addr.String()))
-	assert.Equal(t, expEvt, em.Events()[1])
+	assert.Equal(t, expEvt, em.Events()[3])
 
 	t.Logf("Duration: %v (%d gas)\n", diff, gasAfter-gasBefore)
 }
@@ -559,8 +562,8 @@ func TestExecuteWithDeposit(t *testing.T) {
 	require.NoError(t, err)
 
 	var (
-		bob         = bytes.Repeat([]byte{1}, sdk.AddrLen)
-		fred        = bytes.Repeat([]byte{2}, sdk.AddrLen)
+		bob         = bytes.Repeat([]byte{1}, 20)
+		fred        = bytes.Repeat([]byte{2}, 20)
 		blockedAddr = authtypes.NewModuleAddress(authtypes.FeeCollectorName)
 		deposit     = sdk.NewCoins(sdk.NewInt64Coin("denom", 100))
 	)
@@ -1051,6 +1054,20 @@ func TestMigrateWithDispatchedMessage(t *testing.T) {
 			},
 		},
 		{
+			"Type": "coin_spent",
+			"Attr": []dict{
+				{"spender": contractAddr},
+				{"amount": "100000denom"},
+			},
+		},
+		{
+			"Type": "coin_received",
+			"Attr": []dict{
+				{"receiver": myPayoutAddr},
+				{"amount": "100000denom"},
+			},
+		},
+		{
 			"Type": "transfer",
 			"Attr": []dict{
 				{"recipient": myPayoutAddr},
@@ -1210,7 +1227,7 @@ func TestSudo(t *testing.T) {
 	balance := bankKeeper.GetBalance(ctx, comAcct.GetAddress(), "denom")
 	assert.Equal(t, sdk.NewInt64Coin("denom", 76543), balance)
 	// and events emitted
-	require.Len(t, em.Events(), 2)
+	require.Len(t, em.Events(), 4)
 	expEvt := sdk.NewEvent("sudo",
 		sdk.NewAttribute("_contract_address", addr.String()))
 	assert.Equal(t, expEvt, em.Events()[0])

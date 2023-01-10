@@ -3,10 +3,11 @@ package keeper
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	wasmvmtypes "github.com/CosmWasm/wasmvm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -93,9 +94,23 @@ func TestDispatchSubMsgSuccessCase(t *testing.T) {
 	require.NotNil(t, res.Result.Ok)
 	sub := res.Result.Ok
 	assert.Empty(t, sub.Data)
-	require.Len(t, sub.Events, 1)
+	require.Len(t, sub.Events, 3)
 
-	transfer := sub.Events[0]
+	coinSpent := sub.Events[0]
+	assert.Equal(t, "coin_spent", coinSpent.Type)
+	assert.Equal(t, wasmvmtypes.EventAttribute{
+		Key:   "spender",
+		Value: contractAddr.String(),
+	}, coinSpent.Attributes[0])
+
+	coinReceived := sub.Events[1]
+	assert.Equal(t, "coin_received", coinReceived.Type)
+	assert.Equal(t, wasmvmtypes.EventAttribute{
+		Key:   "receiver",
+		Value: fred.String(),
+	}, coinReceived.Attributes[0])
+
+	transfer := sub.Events[2]
 	assert.Equal(t, "transfer", transfer.Type)
 	assert.Equal(t, wasmvmtypes.EventAttribute{
 		Key:   "recipient",
@@ -246,7 +261,7 @@ func TestDispatchSubMsgErrorHandling(t *testing.T) {
 			submsgID: 5,
 			msg:      validBankSend,
 			// note we charge another 40k for the reply call
-			resultAssertions: []assertion{assertReturnedEvents(1), assertGasUsed(116000, 121000)},
+			resultAssertions: []assertion{assertReturnedEvents(3), assertGasUsed(116000, 130000)},
 		},
 		"not enough tokens": {
 			submsgID:    6,
@@ -266,7 +281,7 @@ func TestDispatchSubMsgErrorHandling(t *testing.T) {
 			msg:      validBankSend,
 			gasLimit: &subGasLimit,
 			// uses same gas as call without limit
-			resultAssertions: []assertion{assertReturnedEvents(1), assertGasUsed(116000, 121000)},
+			resultAssertions: []assertion{assertReturnedEvents(3), assertGasUsed(116000, 130000)},
 		},
 		"not enough tokens with limit": {
 			submsgID:    16,
@@ -371,7 +386,7 @@ func TestDispatchSubMsgEncodeToNoSdkMsg(t *testing.T) {
 		Bank: nilEncoder,
 	}
 
-	ctx, keepers := CreateTestInput(t, false, ReflectFeatures, WithMessageHandler(NewSDKMessageHandler(nil, customEncoders)))
+	ctx, keepers := CreateTestInput(t, false, ReflectFeatures, WithMessageHandler(NewSDKMessageHandler(nil, nil, customEncoders)))
 	accKeeper, keeper, bankKeeper := keepers.AccountKeeper, keepers.WasmKeeper, keepers.BankKeeper
 
 	deposit := sdk.NewCoins(sdk.NewInt64Coin("denom", 100000))
